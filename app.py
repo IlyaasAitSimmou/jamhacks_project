@@ -171,6 +171,7 @@ def convert_to_webm(input_path, output_path):
     ]
     subprocess.run(command, check=True)
 
+
 @app.route('/upload-audio-stt', methods=['POST'])
 def upload_audio_stt():
     if 'audio' not in request.files:
@@ -181,28 +182,11 @@ def upload_audio_stt():
     input_file_path = os.path.join('uploads', audio_file.filename)
     audio_file.save(input_file_path)
 
-    # Convert m4a to WebM
-    webm_file_path = os.path.splitext(input_file_path)[0] + ".webm"
-    try:
-        convert_to_webm(input_file_path, webm_file_path)
-    except Exception as e:
-        return jsonify({"error": f"Conversion to WebM failed: {str(e)}"}), 500
-    
-    try:
-        wbf = wave.open(webm_file_path, "rb")
-    except Exception as e:
-        return jsonify({"error": f"Could not open WebM file: {str(e)}"}), 400
-    
-    audio_id = clone(webm_file_path)
-    if not audio_id:
-        return jsonify({"error": "Failed to clone audio."}), 500
-
-
     # Ensure Vosk model folder exists
     if not os.path.exists("model"):
         return jsonify({"error": "Speech model not found. Please download a Vosk model and place it in the 'model' folder."}), 500
     
-    # Convert m4a to WAV
+    # Convert m4a directly to WAV for Vosk processing
     wav_file_path = os.path.splitext(input_file_path)[0] + ".wav"
     try:
         convert_to_wav(input_file_path, wav_file_path)
@@ -218,6 +202,20 @@ def upload_audio_stt():
     if wf.getnchannels() != 1 or wf.getsampwidth() != 2:
         return jsonify({"error": "Audio file must be mono PCM WAV 16-bit."}), 400
 
+    # For audio cloning, convert to WebM format
+    webm_file_path = os.path.splitext(input_file_path)[0] + ".webm"
+    try:
+        convert_to_webm(input_file_path, webm_file_path)
+        # Try to clone the voice (only if needed)
+        audio_id = clone(webm_file_path)
+        if not audio_id:
+           print("Warning: Failed to clone audio, but continuing with transcription")
+        print(f"Cloned audio ID: {audio_id}")
+    except Exception as e:
+        print(f"Warning: WebM conversion or cloning failed: {str(e)}")
+        # Continue with transcription even if WebM conversion fails
+    
+    # Process the WAV file with Vosk
     model = Model("model")
     rec = KaldiRecognizer(model, wf.getframerate())
     
