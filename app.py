@@ -103,17 +103,108 @@ import wave
 import subprocess
 from vosk import Model, KaldiRecognizer
 import requests
+from vapi import Vapi
+from openai import OpenAI
+
+openai_client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
+
+vapi_client = Vapi(
+    token=os.environ.get('VAPI_TOKEN'),
+)
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///test.db'
 db = SQLAlchemy(app)
 CORS(app)
 
+def call(voice_id, number, prompt):
+    call = vapi_client.calls.create(
+        assistant_id=os.environ.get('ASSISTANT_ID'), 
+        phone_number_id=os.environ.get('PHONE_NUMBER_ID'),
+        customer={"number": number},
+        assistant={
+            "model": {
+                "provider": "openai",
+                "model": "gpt-4",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": prompt
+                    }
+                ]
+            },
+            "voice": {
+                "provider": "cartesia",
+                "voiceId": voice_id,
+                "fillerInjectionEnabled": False
+            }
+        }
+    )
+
+
+def get_place_phone_number(business_query):
+    # Step 1: Find the place_id
+    search_url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
+    search_params = {
+        "input": business_query,
+        "inputtype": "textquery",
+        "fields": "place_id",
+        "key": os.environ.get('GOOGLE_API_KEY')
+    }
+    search_response = requests.get(search_url, params=search_params).json()
+
+    if not search_response.get("candidates"):
+        return None  # Couldn't find place
+
+    place_id = search_response["candidates"][0]["place_id"]
+
+    # Step 2: Use place_id to get phone number
+    details_url = "https://maps.googleapis.com/maps/api/place/details/json"
+    details_params = {
+        "place_id": place_id,
+        "fields": "formatted_phone_number",
+        "key": os.environ.get('GOOGLE_API_KEY')
+    }
+    details_response = requests.get(details_url, params=details_params).json()
+
+    return details_response.get("result", {}).get("formatted_phone_number")
+
+
+def parse_transcription(transcript):
+    # Step 1: Get the AI-generated voice prompt
+    prompt_response = openai_client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": f"You are an AI that transforms short user requests into detailed, natural-sounding instructions for a voice agent that is meant to act like the user. Your job is to take a short transcript and convert it into a clear and specific second-person instruction the voice agent can follow. Assume a realistic context. If the user didn’t provide enough detail (e.g., time, name, location), infer reasonable defaults. The output should sound like: “You are calling [business]. Your name is Yakshith. You want to [action with inferred or explicit details]. Be friendly.” Here are some examples: Input: “Book a barber appointment for me.” Output: “You are calling a local barbershop. Your name is Alex. You want to book a standard haircut sometime this week, ideally in the afternoon. Ask about availability and be polite and friendly.” Input: “Order me a large pepperoni pizza.” Output: “You are calling a local pizza place. Your name is Alex. You want to order one large pepperoni pizza for delivery to your usual address. Confirm the delivery time and be polite.” Input: “Cancel my dentist appointment.” Output: “You are calling your dentist’s office. Your name is Alex. You want to cancel your upcoming appointment scheduled for later this week. Apologize for the cancellation and ask if they need to reschedule.” Now do the same for this input: {transcript}"}
+        ],
+        max_tokens=150,
+    )
+
+    prompt = prompt_response.choices[0].message.content
+
+    # Step 2: Use another OpenAI call to extract business name for Places API
+    extraction_response = openai_client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "Extract only the business name and location (if available) from this user request. If the business name isn't specific, return something general like 'local barbershop'."},
+            {"role": "user", "content": transcript}
+        ],
+        max_tokens=20
+    )
+
+    business_query = extraction_response.choices[0].message.content.strip()
+
+    # Step 3: Query Google Places API to get phone number
+    number = get_place_phone_number(business_query)
+
+    return number, prompt
+
+
 def clone(input_url):
     response = requests.post(
     "https://api.cartesia.ai/voices/clone",
     headers={
-        "X-API-Key": "sk_car_xQhaNZLsX5yE8tGkSvbPyz",
+        "X-API-Key": os.environ.get('CARTESIA_API_KEY'),
         "Cartesia-Version": "2024-11-13"
     },
     data={
@@ -230,6 +321,12 @@ def upload_audio_stt():
     transcript += rec.FinalResult()
     
     print(f"Transcription result: {transcript}")
+
+    number, prompt = parse_transcription(transcript)
+
+    call(audio_id, number, prompt)
+    print(f"Calling {number} with prompt: {prompt}")
+
     return jsonify({"transcript": transcript})
 
 if __name__ == '__main__':
