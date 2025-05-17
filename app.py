@@ -102,12 +102,33 @@ import os
 import wave
 import subprocess
 from vosk import Model, KaldiRecognizer
+import requests
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///test.db'
 db = SQLAlchemy(app)
 CORS(app)
 
+def clone(input_url):
+    response = requests.post(
+    "https://api.cartesia.ai/voices/clone",
+    headers={
+        "X-API-Key": "sk_car_xQhaNZLsX5yE8tGkSvbPyz",
+        "Cartesia-Version": "2024-11-13"
+    },
+    data={
+        'name': "A high-stability cloned voice",
+        'description': "Copied from Cartesia docs",
+        'language': "en",
+        'mode': "similarity",
+        'enhance': False,
+    },
+    files={
+        'clip': (input_url, open(input_url, 'rb')),
+    },
+    )
+
+    return response.json().get('id')
 # (Your Accounts model and other routes go here)
 
 @app.route('/', methods=['POST', 'GET'])
@@ -137,6 +158,19 @@ def convert_to_wav(input_path, output_path):
     ]
     subprocess.run(command, check=True)
 
+def convert_to_webm(input_path, output_path):
+    """
+    Convert input audio/video file to WebM format using Opus audio codec.
+    Adjusts settings to be compatible for audio-focused WebM.
+    """
+    command = [
+        "ffmpeg", "-y", "-i", input_path,
+        "-c:a", "libopus",      # Use Opus audio codec
+        "-b:a", "96k",          # Set audio bitrate
+        output_path
+    ]
+    subprocess.run(command, check=True)
+
 @app.route('/upload-audio-stt', methods=['POST'])
 def upload_audio_stt():
     if 'audio' not in request.files:
@@ -146,7 +180,24 @@ def upload_audio_stt():
     audio_file = request.files['audio']
     input_file_path = os.path.join('uploads', audio_file.filename)
     audio_file.save(input_file_path)
+
+    # Convert m4a to WebM
+    webm_file_path = os.path.splitext(input_file_path)[0] + ".webm"
+    try:
+        convert_to_webm(input_file_path, webm_file_path)
+    except Exception as e:
+        return jsonify({"error": f"Conversion to WebM failed: {str(e)}"}), 500
     
+    try:
+        wbf = wave.open(webm_file_path, "rb")
+    except Exception as e:
+        return jsonify({"error": f"Could not open WebM file: {str(e)}"}), 400
+    
+    audio_id = clone(webm_file_path)
+    if not audio_id:
+        return jsonify({"error": "Failed to clone audio."}), 500
+
+
     # Ensure Vosk model folder exists
     if not os.path.exists("model"):
         return jsonify({"error": "Speech model not found. Please download a Vosk model and place it in the 'model' folder."}), 500
