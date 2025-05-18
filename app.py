@@ -14,10 +14,15 @@ import datetime
 import google.oauth2.credentials
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
-
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 load_dotenv()
 
-SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+SCOPES = [
+        'openid', 
+        'https://www.googleapis.com/auth/userinfo.email', 
+        'https://www.googleapis.com/auth/userinfo.profile'
+    ]
+
 CLIENT_SECRETS_FILE = 'credentials.json'  # Path to your downloaded file
 
 user_tokens = {}
@@ -308,6 +313,16 @@ def convert_to_webm(input_path, output_path):
     ]
     subprocess.run(command, check=True)
 
+def get_user_info(credentials):
+    response = requests.get(
+        'https://www.googleapis.com/oauth2/v1/userinfo',
+        params={'alt': 'json'},
+        headers={'Authorization': f'Bearer {credentials.token}'}
+    )
+    if response.status_code == 200:
+        return response.json()
+    else:
+        return None
 
 @app.route('/upload-audio-stt', methods=['POST'])
 def upload_audio_stt():
@@ -448,7 +463,18 @@ def oauth2callback():
 
     credentials = flow.credentials
     # For this demo, store using email as key (use secure sessions in production)
-    user_tokens[credentials.id_token['email']] = credentials_to_dict(credentials)
+    if credentials.id_token and 'email' in credentials.id_token:
+        email = credentials.id_token['email']
+        user_tokens[email] = credentials_to_dict(credentials)
+    else:
+        # fallback: fetch user info using access token (see Step 3)
+        user_info = get_user_info(credentials)
+        if user_info and 'email' in user_info:
+            user_tokens[user_info['email']] = credentials_to_dict(credentials)
+        else:
+            # Handle error or abort: you don't have the user's email
+            return "Error: Could not get user email.", 400
+
     
     return jsonify({'message': 'Authorization successful! You can now access calendar.'})
 
