@@ -1,18 +1,33 @@
-import { View, Text, StyleSheet, TouchableOpacity, StatusBar, Animated } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, StatusBar, Animated, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import React, { useState, useEffect, useRef } from 'react';
 import { Audio } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { useForm } from 'react-hook-form';
+import { useNavigation } from 'expo-router';
+import { TextInput, Button, Text, Surface } from "react-native-paper";
+import  { AccountProvider, useAccountContext } from './components/AccountContext';
 
 const VoiceRecord = () => {
+  // State declarations
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [permissionResponse, requestPermission] = Audio.usePermissions();
   const [visualFeedback, setVisualFeedback] = useState('Tap to start');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [URI, setURI] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const { login } = useAccountContext();
   
-  // Animation for the recording button
+  // Animation refs
   const animatedSize = useRef(new Animated.Value(1)).current;
   const animatedOpacity = useRef(new Animated.Value(1)).current;
+
+  const { handleSubmit } = useForm();
+  const navigation = useNavigation<any>();
   
   // Pulse animation when recording
   useEffect(() => {
@@ -114,7 +129,8 @@ const VoiceRecord = () => {
     setRecording(null);
     
     if (uri) {
-      sendAudioToServer(uri);
+      setURI(uri);
+      console.log('Recording stopped. URI:', uri);
     }
     
     // Reset animations
@@ -122,7 +138,21 @@ const VoiceRecord = () => {
     setVisualFeedback('Tap to start');
   }
 
-  async function sendAudioToServer(uri: string) {
+  async function sendAudioToServer(uri: string, email: string, username: string, password: string, phoneNumber: string) {
+    if (!uri) {
+      console.log('No recording found');
+      setVisualFeedback('No recording found');
+      return;
+    }
+    
+    // Simple validation
+    if (!email || !username || !password || !phoneNumber) {
+      setVisualFeedback('Please fill all fields');
+      return;
+    }
+    
+    setIsLoading(true);
+    
     try {
       // Create FormData for sending the file
       const formData = new FormData();
@@ -131,20 +161,27 @@ const VoiceRecord = () => {
         type: 'audio/m4a',
         name: 'recording.m4a',
       } as any);
+      formData.append('username', username);
+      formData.append('email', email);
+      formData.append('password', password);
+      formData.append('phone_number', phoneNumber);
 
       setVisualFeedback('Sending to server...');
       console.log('Sending audio to server...');
-      const response = await fetch('http://10.37.123.232:5001/upload-audio', {
+      const response = await fetch('http://10.37.123.232:5001/signup', {
         method: 'POST',
         body: formData,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        // headers: {
+        //   'Content-Type': 'multipart/form-data',
+        // },
       });
 
       const result = await response.json();
+      if (result.message) {
+        await login(email, password);
+      }
       console.log('Server response:', result);
-      setVisualFeedback('Command received');
+      setVisualFeedback('Account created successfully!');
       
       // Reset visual feedback after a delay
       setTimeout(() => {
@@ -153,6 +190,8 @@ const VoiceRecord = () => {
     } catch (error) {
       console.error('Error sending audio to server:', error);
       setVisualFeedback('Error sending audio');
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -165,41 +204,111 @@ const VoiceRecord = () => {
     >
       <StatusBar translucent backgroundColor="transparent" />
       
-      <Text style={styles.title}>Voice Command</Text>
-      <Text style={styles.subtitle}>Say "Hey Bob" to activate</Text>
-      
-      <View style={styles.recordingContainer}>
-        <Animated.View 
-          style={[
-            styles.pulseRing,
-            { 
-              opacity: animatedOpacity,
-              transform: [{ scale: animatedSize }] 
-            }
-          ]}
-        />
-        
-        <TouchableOpacity
-          style={styles.recordButton}
-          onPress={isRecording ? stopRecording : startRecording}
-          activeOpacity={0.8}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.keyboardAvoidView}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
         >
-          <FontAwesome5 
-            name={isRecording ? "stop" : "microphone"} 
-            size={isRecording ? 32 : 38} 
-            color="#fff" 
-          />
-        </TouchableOpacity>
-      </View>
-      
-      <Text style={styles.statusText}>{visualFeedback}</Text>
+          <Text style={styles.title}>Voice Registration</Text>
+          <Text style={styles.subtitle}>Create your voice-powered account</Text>
+          
+          <Surface style={styles.formContainer}>
+            <TextInput
+              mode="outlined"
+              label="Username"
+              value={username}
+              onChangeText={setUsername}
+              style={styles.input}
+              outlineColor="#8a3cff"
+              activeOutlineColor="#6a11cb"
+            />
+
+            <TextInput
+              mode="outlined"
+              label="Email"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              style={styles.input}
+              outlineColor="#8a3cff"
+              activeOutlineColor="#6a11cb"
+            />
+
+            <TextInput
+              mode="outlined"
+              label="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              style={styles.input}
+              outlineColor="#8a3cff"
+              activeOutlineColor="#6a11cb"
+            />
+
+            <TextInput
+              mode="outlined"
+              label="Phone Number"
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+              keyboardType="phone-pad"
+              style={styles.input}
+              outlineColor="#8a3cff"
+              activeOutlineColor="#6a11cb"
+            />
+
+            <Text style={styles.recordingInstructions}>
+              Record your voice for voice authentication:
+            </Text>
+
+            <View style={styles.recordingContainer}>
+              <Animated.View 
+                style={[
+                  styles.pulseRing,
+                  { 
+                    opacity: animatedOpacity,
+                    transform: [{ scale: animatedSize }] 
+                  }
+                ]}
+              />
+              
+              <TouchableOpacity
+                style={styles.recordButton}
+                onPress={isRecording ? stopRecording : startRecording}
+                activeOpacity={0.8}
+              >
+                <FontAwesome5 
+                  name={isRecording ? "stop" : "microphone"} 
+                  size={isRecording ? 32 : 38} 
+                  color="#fff" 
+                />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={styles.statusText}>{visualFeedback}</Text>
+          </Surface>
+          
+          <Button 
+            mode="contained" 
+            onPress={() => sendAudioToServer(URI, email, username, password, phoneNumber)}
+            style={styles.signupButton}
+            labelStyle={styles.signupButtonText}
+            loading={isLoading}
+            disabled={isLoading || !URI}
+          >
+            Create Account
+          </Button>
+        </ScrollView>
+      </KeyboardAvoidingView>
       
       <View style={styles.tipsContainer}>
         <View style={styles.tipCard}>
           <Text style={styles.tipTitle}>Tips</Text>
-          <Text style={styles.tipText}>• Speak clearly into the microphone</Text>
-          <Text style={styles.tipText}>• Start with "Hey Bob" for commands</Text>
-          <Text style={styles.tipText}>• Wait for the activation sound</Text>
+          <Text style={styles.tipText}>• Record your voice clearly for best results</Text>
+          <Text style={styles.tipText}>• Say a few sentences for voice authentication</Text>
+          <Text style={styles.tipText}>• You'll use your voice to log in later</Text>
         </View>
       </View>
     </LinearGradient>
@@ -211,9 +320,16 @@ export default VoiceRecord;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
+  },
+  keyboardAvoidView: {
+    flex: 1,
+  },
+  scrollContainer: {
+    flexGrow: 1,
     alignItems: 'center',
-    padding: 20,
+    paddingTop: 60,
+    paddingBottom: 160, // Additional padding for tips container
+    paddingHorizontal: 20,
   },
   title: {
     fontSize: 32,
@@ -225,66 +341,103 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 18,
     color: 'rgba(255, 255, 255, 0.8)',
-    marginBottom: 50,
+    marginBottom: 30,
+    textAlign: 'center',
+  },
+  formContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  input: {
+    marginBottom: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+  },
+  recordingInstructions: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginVertical: 16,
+    color: '#333',
+    textAlign: 'center',
   },
   recordingContainer: {
-    width: 200,
-    height: 200,
+    height: 150,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 30,
+    marginBottom: 20,
   },
   pulseRing: {
     position: 'absolute',
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  recordButton: {
     width: 120,
     height: 120,
     borderRadius: 60,
+    backgroundColor: 'rgba(106, 17, 203, 0.2)',
+  },
+  recordButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: '#ff4c4c',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 10,
+    shadowRadius: 6,
+    elevation: 8,
   },
   statusText: {
-    fontSize: 18,
-    color: '#fff',
+    fontSize: 16,
+    color: '#6a11cb',
     marginTop: 10,
     textAlign: 'center',
     fontWeight: '500',
   },
+  signupButton: {
+    width: '100%',
+    marginTop: 24,
+    paddingVertical: 8,
+    backgroundColor: '#6a11cb',
+    borderRadius: 12,
+  },
+  signupButtonText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
   tipsContainer: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 20,
     left: 20,
     right: 20,
   },
   tipCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
     borderRadius: 15,
-    padding: 20,
+    padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 5,
+    elevation: 4,
   },
   tipTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 10,
+    marginBottom: 8,
     color: '#333',
   },
   tipText: {
     fontSize: 15,
-    marginBottom: 5,
+    marginBottom: 4,
     color: '#555',
     lineHeight: 22,
   },
