@@ -3,6 +3,7 @@ import { Stack } from "expo-router";
 import { AppState } from "react-native";
 import { Audio } from "expo-av";
 import React, { useEffect, useRef } from "react";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 // Global flag for command recording
 let isCommandRecording = false;
@@ -186,9 +187,11 @@ const recordCommandAndSend = async (user_id: number) => {
 
 export default function RootLayout() {
   return (
-    <AccountProvider>
-      <Layout />
-    </AccountProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AccountProvider>
+        <Layout />
+      </AccountProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -229,7 +232,8 @@ export function Layout() {
   return (
       <Stack>
         <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="voicerecord" options={{ title: "Voice Recorder" }} />
+        <Stack.Screen name="voicerecord" options={{ title: "Sign Up" }} />
+        <Stack.Screen name="login" options={{ title: "Login" }} />
       </Stack>
   );
 }

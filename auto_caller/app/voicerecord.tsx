@@ -179,9 +179,11 @@ const VoiceRecord = () => {
       const result = await response.json();
       if (result.message) {
         await login(email, password);
+        navigation.replace("dashboard");
       }
       console.log('Server response:', result);
       setVisualFeedback('Account created successfully!');
+
       
       // Reset visual feedback after a delay
       setTimeout(() => {
@@ -302,6 +304,9 @@ const VoiceRecord = () => {
           >
             Create Account
           </Button>
+          <TouchableOpacity onPress={() => navigation.navigate("login")} style={styles.linkContainer}>
+            <Text style={styles.linkText}>Already have an account? Log In</Text>
+          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
       
@@ -448,5 +453,14 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     color: '#555',
     lineHeight: 22,
+  },
+  linkContainer: {
+    marginTop: 15,
+    alignItems: 'center',
+  },
+  linkText: {
+    fontSize: 16,
+    color: '#2575fc',
+    textDecorationLine: 'underline',
   },
 });
