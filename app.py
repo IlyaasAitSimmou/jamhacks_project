@@ -12,16 +12,6 @@ from vapi import Vapi
 from openai import OpenAI
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
-<<<<<<< HEAD
-import datetime
-import google.oauth2.credentials
-import google_auth_oauthlib.flow
-import googleapiclient.discovery
-
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-
-=======
->>>>>>> 3a5f59501da995507c081f9637f46b73375d557e
 load_dotenv()
 
 openai_client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
@@ -47,7 +37,7 @@ def call(voice_id, number, prompt):
                 "messages": [
                     {
                         "role": "system",
-                        "content": prompt
+                        "content": prompt + "Remember to speak accordingly to who you're speaking to in terms of tone and use of vocabulary. Remember it's a conversation, do not ask for everything at once, speak kindly and speak in phrases, dont spam all the information at once. Have a conversation rather than a one-sided discussion. Only talk about one thing / inquiry at a time."
                     }
                 ]
             },
@@ -111,10 +101,12 @@ def parse_transcription(transcript):
     prompt_response = openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
-            {"role": "system", "content": f"You are an AI that transforms short user requests into detailed, natural-sounding instructions for a voice agent that is meant to act like the user. Your job is to take a short transcript and convert it into a clear and specific second-person instruction the voice agent can follow. Assume a realistic context. If the user didn’t provide enough detail (e.g., time, name, location), infer reasonable defaults. The output should sound like: “You are calling [business]. Your name is Yakshith. You want to [action with inferred or explicit details]. Be friendly.” Here are some examples: Input: “Book a barber appointment for me.” Output: “You are calling a local barbershop. Your name is Alex. You want to book a standard haircut sometime this week, ideally in the afternoon. Ask about availability and be polite and friendly.” Input: “Order me a large pepperoni pizza.” Output: “You are calling a local pizza place. Your name is Alex. You want to order one large pepperoni pizza for delivery to your usual address. Confirm the delivery time and be polite.” Input: “Cancel my dentist appointment.” Output: “You are calling your dentist’s office. Your name is Alex. You want to cancel your upcoming appointment scheduled for later this week. Apologize for the cancellation and ask if they need to reschedule.” Now do the same for this input: {transcript}"}
+            {"role": "system", "content": f"You are an AI that transforms short user requests into detailed, natural-sounding instructions for a voice agent that is meant to act like the user. Your job is to take a short transcript and convert it into a clear and specific second-person instruction the voice agent can follow. Assume a realistic context. If the user didn’t provide enough detail (e.g., time, name, location), infer reasonable defaults.  Now do the same for this input: {transcript}"}
         ],
         max_tokens=150,
     )
+
+    print(f"Prompt response: {prompt_response}")
 
     prompt = prompt_response.choices[0].message.content
 
