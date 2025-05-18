@@ -15,6 +15,8 @@ import google.oauth2.credentials
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
 
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
 load_dotenv()
 
 SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']

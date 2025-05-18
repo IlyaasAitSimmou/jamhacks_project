@@ -9,9 +9,10 @@ let isCommandRecording = false;
 // Global reference for any active recording
 let activeAudioRecording: Audio.Recording | null = null;
 
-const sendAudioToServer = async (uri: string, isCommand = false) => {
+const sendAudioToServer = async (uri: string, user_id: number, isCommand = false) => {
   try {
     const formData = new FormData();
+    formData.append("user_id", user_id.toString());
     formData.append("audio", {
       uri,
       type: "audio/m4a",
@@ -36,7 +37,7 @@ const sendAudioToServer = async (uri: string, isCommand = false) => {
       if (transcriptLower.includes("hey bob")) {
         console.log('Detected "hey bob" in transcription.');
         if (!isCommandRecording) {
-          recordCommandAndSend();
+          recordCommandAndSend(user_id);
         }
       }
     }
@@ -45,7 +46,7 @@ const sendAudioToServer = async (uri: string, isCommand = false) => {
   }
 };
 
-const recordAndSend = async () => {
+const recordAndSend = async (user_id: number) => {
   try {
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: true,
@@ -80,7 +81,7 @@ const recordAndSend = async () => {
           console.log("Recording stopped. URI:", uri);
           activeAudioRecording = null;
           if (uri) {
-            await sendAudioToServer(uri);
+            await sendAudioToServer(uri, user_id);
           }
         }
       } catch (e: any) {
@@ -172,11 +173,11 @@ const recordCommandUntilSilence = () => {
   });
 };
 
-const recordCommandAndSend = async () => {
+const recordCommandAndSend = async (user_id: number) => {
   try {
     const uri = await recordCommandUntilSilence();
     if (uri) {
-      await sendAudioToServer(uri, true);
+      await sendAudioToServer(uri, user_id, true);
     }
   } catch (error) {
     console.error("Error in recordCommandAndSend:", error);
@@ -198,7 +199,7 @@ export function Layout() {
 
   const startRecordingLoop = async () => {
     if (!isCommandRecording) {
-      await recordAndSend();
+      await recordAndSend(user?.id || "");
     }
     recordingLoopRef.current = setTimeout(() => {
       startRecordingLoop();
