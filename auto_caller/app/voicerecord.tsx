@@ -297,6 +297,8 @@ const VoiceRecord = () => {
             labelStyle={styles.signupButtonText}
             loading={isLoading}
             disabled={isLoading || !URI}
+            buttonColor="#DD2476"
+            contentStyle={{ height: 48 }}
           >
             Create Account
           </Button>
@@ -403,15 +405,21 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   signupButton: {
-    width: '100%',
-    marginTop: 24,
+    backgroundColor: '#DD2476',
+    marginTop: 20,
     paddingVertical: 8,
-    backgroundColor: '#6a11cb',
     borderRadius: 12,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
   signupButtonText: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
   tipsContainer: {
     position: 'absolute',
