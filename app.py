@@ -1,4 +1,6 @@
-from flask import Flask, request, jsonify, session
+#
+
+from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import os
@@ -10,6 +12,7 @@ from vapi import Vapi
 from openai import OpenAI
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
+<<<<<<< HEAD
 import datetime
 import google.oauth2.credentials
 import google_auth_oauthlib.flow
@@ -17,18 +20,9 @@ import googleapiclient.discovery
 
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
+=======
+>>>>>>> 3a5f59501da995507c081f9637f46b73375d557e
 load_dotenv()
-
-SCOPES = [
-  'https://www.googleapis.com/auth/userinfo.email',
-  'https://www.googleapis.com/auth/userinfo.profile',
-  'openid',
-  'https://www.googleapis.com/auth/calendar.readonly'
-];
-
-CLIENT_SECRETS_FILE = 'credentials.json'  # Path to your downloaded file
-
-user_tokens = {}
 
 openai_client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
 
@@ -113,17 +107,11 @@ def get_place_phone_number(business_query):
 
 
 def parse_transcription(transcript):
-
-    email = session.get('email')
-    if not email:
-        # Handle not logged in
-        return None, "User not logged in", None
-    free_times = get_free_times(email)
-    
+    # Step 1: Get the AI-generated voice prompt
     prompt_response = openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
-            {"role": "system", "content": f"You are an AI that transforms short user requests into detailed, natural-sounding instructions for a voice agent that is meant to act like the user. Your job is to take a short transcript and convert it into a clear and specific second-person instruction the voice agent can follow. Assume a realistic context. If the user didn’t provide enough detail (e.g., time, name, location), infer reasonable defaults. You also have the user's free times based on their google calendar so suggest times if applicable in the scenario but don't be stupid and suggest haircut at like 4am or something like that: {free_times}.The output should sound like: “You are calling [business]. Your name is Yakshith. You want to [action with inferred or explicit details]. Be friendly.” Here are some examples: Input: “Book a barber appointment for me.” Output: “You are calling a local barbershop. Your name is Alex. You want to book a standard haircut sometime this week, ideally in the afternoon. Ask about availability and be polite and friendly.” Input: “Order me a large pepperoni pizza.” Output: “You are calling a local pizza place. Your name is Alex. You want to order one large pepperoni pizza for delivery to your usual address. Confirm the delivery time and be polite.” Input: “Cancel my dentist appointment.” Output: “You are calling your dentist’s office. Your name is Alex. You want to cancel your upcoming appointment scheduled for later this week. Apologize for the cancellation and ask if they need to reschedule.” Now do the same for this input: {transcript}"}
+            {"role": "system", "content": f"You are an AI that transforms short user requests into detailed, natural-sounding instructions for a voice agent that is meant to act like the user. Your job is to take a short transcript and convert it into a clear and specific second-person instruction the voice agent can follow. Assume a realistic context. If the user didn’t provide enough detail (e.g., time, name, location), infer reasonable defaults. The output should sound like: “You are calling [business]. Your name is Yakshith. You want to [action with inferred or explicit details]. Be friendly.” Here are some examples: Input: “Book a barber appointment for me.” Output: “You are calling a local barbershop. Your name is Alex. You want to book a standard haircut sometime this week, ideally in the afternoon. Ask about availability and be polite and friendly.” Input: “Order me a large pepperoni pizza.” Output: “You are calling a local pizza place. Your name is Alex. You want to order one large pepperoni pizza for delivery to your usual address. Confirm the delivery time and be polite.” Input: “Cancel my dentist appointment.” Output: “You are calling your dentist’s office. Your name is Alex. You want to cancel your upcoming appointment scheduled for later this week. Apologize for the cancellation and ask if they need to reschedule.” Now do the same for this input: {transcript}"}
         ],
         max_tokens=150,
     )
@@ -145,7 +133,7 @@ def parse_transcription(transcript):
     # Step 3: Query Google Places API to get phone number
     number = get_place_phone_number(business_query)
 
-    return number, prompt,
+    return number, prompt
 
 
 def clone(input_url):
@@ -316,16 +304,6 @@ def convert_to_webm(input_path, output_path):
     ]
     subprocess.run(command, check=True)
 
-def get_user_info(credentials):
-    response = requests.get(
-        'https://www.googleapis.com/oauth2/v1/userinfo',
-        params={'alt': 'json'},
-        headers={'Authorization': f'Bearer {credentials.token}'}
-    )
-    if response.status_code == 200:
-        return response.json()
-    else:
-        return None
 
 @app.route('/upload-audio-stt', methods=['POST'])
 def upload_audio_stt():
@@ -372,7 +350,6 @@ def upload_audio_stt():
     
     print(f"Transcription result: {transcript}")
     return jsonify({"transcript": transcript})
-
 
 
 @app.route('/upload-audio-2', methods=['POST'])
@@ -442,74 +419,6 @@ def upload_audio_2():
     print(f"Calling {number} with prompt: {prompt}")
 
     return jsonify({"transcript": transcript})
-
-@app.route('/authorize')
-def authorize():
-    flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
-        CLIENT_SECRETS_FILE, scopes=SCOPES)
-    flow.redirect_uri = 'http://localhost:5001/oauth2callback'
-
-    authorization_url, state = flow.authorization_url(
-        access_type='offline',
-        include_granted_scopes='true')
-
-    return jsonify({'url': authorization_url})
-
-@app.route('/oauth2callback')
-def oauth2callback():
-    flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
-        CLIENT_SECRETS_FILE, scopes=SCOPES)
-    flow.redirect_uri = 'http://localhost:5001/oauth2callback'
-
-    authorization_response = request.url
-    flow.fetch_token(authorization_response=authorization_response)
-
-    credentials = flow.credentials
-    # For this demo, store using email as key (use secure sessions in production)
-    if credentials.id_token and 'email' in credentials.id_token:
-        email = credentials.id_token['email']
-        user_tokens[email] = credentials_to_dict(credentials)
-    else:
-        # fallback: fetch user info using access token (see Step 3)
-        user_info = get_user_info(credentials)
-        if user_info and 'email' in user_info:
-            user_tokens[user_info['email']] = credentials_to_dict(credentials)
-        else:
-            # Handle error or abort: you don't have the user's email
-            return "Error: Could not get user email.", 400
-
-    
-    return jsonify({'message': 'Authorization successful! You can now access calendar.'})
-
-def credentials_to_dict(credentials):
-    return {
-        'token': credentials.token,
-        'refresh_token': credentials.refresh_token,
-        'token_uri': credentials.token_uri,
-        'client_id': credentials.client_id,
-        'client_secret': credentials.client_secret,
-        'scopes': credentials.scopes
-    }
-
-def get_free_times(email):
-
-    if email not in user_tokens:
-        return jsonify({'error': 'User not authorized'}), 403
-
-    creds = google.oauth2.credentials.Credentials(**user_tokens[email])
-    service = googleapiclient.discovery.build('calendar', 'v3', credentials=creds)
-
-    now = datetime.datetime.utcnow().isoformat() + 'Z'
-    later = (datetime.datetime.utcnow() + datetime.timedelta(days=1)).isoformat() + 'Z'
-
-    events_result = service.events().list(calendarId='primary', timeMin=now,
-                                          timeMax=later, singleEvents=True,
-                                          orderBy='startTime').execute()
-    events = events_result.get('items', [])
-
-    busy_times = [(e['start']['dateTime'], e['end']['dateTime']) for e in events if 'dateTime' in e['start']]
-
-    return busy_times
 
 if __name__ == '__main__':
     with app.app_context():
