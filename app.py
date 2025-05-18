@@ -1,86 +1,4 @@
-# from flask import Flask, render_template, url_for, request, redirect
-# from flask_sqlalchemy import SQLAlchemy
-# from datetime import datetime
-# from werkzeug.security import generate_password_hash, check_password_hash
-# from flask import jsonify
-# from flask_cors import CORS
-# # import functions
-# # import email_verification
-# import os
-# import wave
-# from vosk import Model, KaldiRecognizer
-
-# app = Flask(__name__)
-# app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///test.db'
-# db = SQLAlchemy(app)
-# CORS(app)
-
-# @app.route('/', methods=['POST', 'GET'])
-# def index():
-#     return jsonify({'message': 'some random page'})
-    
-
-
-# @app.route('/upload-audio', methods=['POST'])
-# def upload_audio():
-#     if 'audio' not in request.files:
-#         return jsonify({'error': 'No audio file in request'}), 400
-    
-#     os.makedirs('uploads', exist_ok=True)
-    
-#     audio_file = request.files['audio']
-#     # Save to a folder or process as needed
-#     audio_file.save(os.path.join('uploads', audio_file.filename))
-    
-#     # Process the audio file or simply return success
-#     print(f"Received audio file: {audio_file.filename}")
-#     return jsonify({'message': 'Audio received successfully'})
-
-
-# @app.route('/upload-audio-stt', methods=['POST'])
-# def upload_audio_stt():
-#     if 'audio' not in request.files:
-#         return jsonify({'error': 'No audio file in request'}), 400
-
-#     os.makedirs('uploads', exist_ok=True)
-    
-#     audio_file = request.files['audio']
-#     file_path = os.path.join('uploads', audio_file.filename)
-#     audio_file.save(file_path)
-    
-#     # Check that the model folder exists
-#     if not os.path.exists("model"):
-#         return jsonify({"error": "Speech model not found. Please download a Vosk model and place it in the 'model' folder."}), 500
-    
-#     try:
-#         wf = wave.open(file_path, "rb")
-#     except Exception as e:
-#         return jsonify({"error": f"Could not open audio file: {str(e)}"}), 400
-
-#     # Vosk expects mono, 16-bit PCM WAV. You may need to convert if your recordings differ.
-#     if wf.getnchannels() != 1 or wf.getsampwidth() != 2:
-#         return jsonify({"error": "Audio file must be mono PCM WAV 16-bit."}), 400
-
-#     model = Model("model")
-#     rec = KaldiRecognizer(model, wf.getframerate())
-    
-#     transcript = ""
-#     while True:
-#         data = wf.readframes(4000)
-#         if len(data) == 0:
-#             break
-#         if rec.AcceptWaveform(data):
-#             result = rec.Result()
-#             transcript += result
-#     transcript += rec.FinalResult()
-    
-#     print(f"Transcription result: {transcript}")
-#     return jsonify({"transcript": transcript})
-
-# if __name__ == '__main__':
-#     app.run(host="0.0.0.0", port=5001, debug=True)
-
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import os
@@ -92,7 +10,17 @@ from vapi import Vapi
 from openai import OpenAI
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
+import datetime
+import google.oauth2.credentials
+import google_auth_oauthlib.flow
+import googleapiclient.discovery
+
 load_dotenv()
+
+SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+CLIENT_SECRETS_FILE = 'credentials.json'  # Path to your downloaded file
+
+user_tokens = {}
 
 openai_client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
 
@@ -177,11 +105,17 @@ def get_place_phone_number(business_query):
 
 
 def parse_transcription(transcript):
-    # Step 1: Get the AI-generated voice prompt
+
+    email = session.get('email')
+    if not email:
+        # Handle not logged in
+        return None, "User not logged in", None
+    free_times = get_free_times(email)
+    
     prompt_response = openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
-            {"role": "system", "content": f"You are an AI that transforms short user requests into detailed, natural-sounding instructions for a voice agent that is meant to act like the user. Your job is to take a short transcript and convert it into a clear and specific second-person instruction the voice agent can follow. Assume a realistic context. If the user didn’t provide enough detail (e.g., time, name, location), infer reasonable defaults. The output should sound like: “You are calling [business]. Your name is Yakshith. You want to [action with inferred or explicit details]. Be friendly.” Here are some examples: Input: “Book a barber appointment for me.” Output: “You are calling a local barbershop. Your name is Alex. You want to book a standard haircut sometime this week, ideally in the afternoon. Ask about availability and be polite and friendly.” Input: “Order me a large pepperoni pizza.” Output: “You are calling a local pizza place. Your name is Alex. You want to order one large pepperoni pizza for delivery to your usual address. Confirm the delivery time and be polite.” Input: “Cancel my dentist appointment.” Output: “You are calling your dentist’s office. Your name is Alex. You want to cancel your upcoming appointment scheduled for later this week. Apologize for the cancellation and ask if they need to reschedule.” Now do the same for this input: {transcript}"}
+            {"role": "system", "content": f"You are an AI that transforms short user requests into detailed, natural-sounding instructions for a voice agent that is meant to act like the user. Your job is to take a short transcript and convert it into a clear and specific second-person instruction the voice agent can follow. Assume a realistic context. If the user didn’t provide enough detail (e.g., time, name, location), infer reasonable defaults. You also have the user's free times based on their google calendar so suggest times if applicable in the scenario but don't be stupid and suggest haircut at like 4am or something like that: {free_times}.The output should sound like: “You are calling [business]. Your name is Yakshith. You want to [action with inferred or explicit details]. Be friendly.” Here are some examples: Input: “Book a barber appointment for me.” Output: “You are calling a local barbershop. Your name is Alex. You want to book a standard haircut sometime this week, ideally in the afternoon. Ask about availability and be polite and friendly.” Input: “Order me a large pepperoni pizza.” Output: “You are calling a local pizza place. Your name is Alex. You want to order one large pepperoni pizza for delivery to your usual address. Confirm the delivery time and be polite.” Input: “Cancel my dentist appointment.” Output: “You are calling your dentist’s office. Your name is Alex. You want to cancel your upcoming appointment scheduled for later this week. Apologize for the cancellation and ask if they need to reschedule.” Now do the same for this input: {transcript}"}
         ],
         max_tokens=150,
     )
@@ -203,7 +137,7 @@ def parse_transcription(transcript):
     # Step 3: Query Google Places API to get phone number
     number = get_place_phone_number(business_query)
 
-    return number, prompt
+    return number, prompt,
 
 
 def clone(input_url):
@@ -422,6 +356,7 @@ def upload_audio_stt():
     return jsonify({"transcript": transcript})
 
 
+
 @app.route('/upload-audio-2', methods=['POST'])
 def upload_audio_2():
     if 'audio' not in request.files:
@@ -489,6 +424,63 @@ def upload_audio_2():
     print(f"Calling {number} with prompt: {prompt}")
 
     return jsonify({"transcript": transcript})
+
+@app.route('/authorize')
+def authorize():
+    flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
+        CLIENT_SECRETS_FILE, scopes=SCOPES)
+    flow.redirect_uri = 'http://localhost:5001/oauth2callback'
+
+    authorization_url, state = flow.authorization_url(
+        access_type='offline',
+        include_granted_scopes='true')
+
+    return jsonify({'url': authorization_url})
+
+@app.route('/oauth2callback')
+def oauth2callback():
+    flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
+        CLIENT_SECRETS_FILE, scopes=SCOPES)
+    flow.redirect_uri = 'http://localhost:5001/oauth2callback'
+
+    authorization_response = request.url
+    flow.fetch_token(authorization_response=authorization_response)
+
+    credentials = flow.credentials
+    # For this demo, store using email as key (use secure sessions in production)
+    user_tokens[credentials.id_token['email']] = credentials_to_dict(credentials)
+    
+    return jsonify({'message': 'Authorization successful! You can now access calendar.'})
+
+def credentials_to_dict(credentials):
+    return {
+        'token': credentials.token,
+        'refresh_token': credentials.refresh_token,
+        'token_uri': credentials.token_uri,
+        'client_id': credentials.client_id,
+        'client_secret': credentials.client_secret,
+        'scopes': credentials.scopes
+    }
+
+def get_free_times(email):
+
+    if email not in user_tokens:
+        return jsonify({'error': 'User not authorized'}), 403
+
+    creds = google.oauth2.credentials.Credentials(**user_tokens[email])
+    service = googleapiclient.discovery.build('calendar', 'v3', credentials=creds)
+
+    now = datetime.datetime.utcnow().isoformat() + 'Z'
+    later = (datetime.datetime.utcnow() + datetime.timedelta(days=1)).isoformat() + 'Z'
+
+    events_result = service.events().list(calendarId='primary', timeMin=now,
+                                          timeMax=later, singleEvents=True,
+                                          orderBy='startTime').execute()
+    events = events_result.get('items', [])
+
+    busy_times = [(e['start']['dateTime'], e['end']['dateTime']) for e in events if 'dateTime' in e['start']]
+
+    return busy_times
 
 if __name__ == '__main__':
     with app.app_context():
