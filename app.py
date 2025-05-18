@@ -18,10 +18,11 @@ os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 load_dotenv()
 
 SCOPES = [
-        'openid', 
-        'https://www.googleapis.com/auth/userinfo.email', 
-        'https://www.googleapis.com/auth/userinfo.profile'
-    ]
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
+  'openid',
+  'https://www.googleapis.com/auth/calendar.readonly'
+];
 
 CLIENT_SECRETS_FILE = 'credentials.json'  # Path to your downloaded file
 
